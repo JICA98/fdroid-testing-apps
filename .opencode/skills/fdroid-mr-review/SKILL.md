@@ -21,6 +21,9 @@ Check each; if items 1-3 fail, STOP and tell the user what to fix:
 5. Optional — PCAPdroid installed: `adb shell pm list packages | grep
    com.emanuelef.remote_capture` (needed only if the app has INTERNET)
 6. Optional — VirusTotal key at `.tokens/virustotal.key`
+7. Optional — GitLab token at `.tokens/gitlab.token` (needed only for
+   auto-posting the report as an MR comment; without it the report is shown
+   for manual posting)
 
 ## Phase 1: Device selection
 
@@ -138,7 +141,8 @@ Write `work/<iid>/results.json` with the schema below and
       --device "<serial or device name>" --results work/<iid>/results.json \
       --notes work/<iid>/notes.txt
 
-Show `reports/<iid>-<package>.md` to the user for manual posting on the MR.
+Show `reports/<iid>-<package>.md` to the user, then ask whether to post it
+as an MR comment (Phase 11) or let them post manually.
 
 ### results.json schema
 
@@ -166,7 +170,26 @@ Show `reports/<iid>-<package>.md` to the user for manual posting on the MR.
 
 `true` → `- [x]`, anything else → `- [ ]`.
 
-## Phase 11: Cleanup
+## Phase 11: Post comment (on user confirmation)
+
+After showing the report in Phase 10, always ask the user first: "Post this
+report as a comment on MR !<iid>?" — never post without confirmation.
+
+1. If `.tokens/gitlab.token` is missing or empty: ask the user for a GitLab
+   personal access token with `api` scope, save it to `.tokens/gitlab.token`
+   (gitignored), or skip auto-posting (manual flow).
+2. Post the full report:
+
+   ```bash
+   python3 .opencode/skills/fdroid-mr-review/scripts/post_comment.py <iid> \
+     --report reports/<iid>-<package>.md
+   ```
+
+3. On success, show the comment URL from the output. On `401/403`: token
+   invalid or missing `api` scope — tell the user, keep the manual posting
+   flow.
+
+## Phase 12: Cleanup
 
 - Ask the user whether to uninstall: `adb -s <serial> uninstall <package>`
 - Keep `work/<iid>/` and `reports/` (gitignored) for reference.
@@ -183,6 +206,8 @@ Show `reports/<iid>-<package>.md` to the user for manual posting on the MR.
 | Crash on launch | logcat → FAIL, continue feasible checks |
 | No PCAPdroid, no root | note "capture not performed" |
 | Invalid VT key | skip scan, note it |
+| Token missing / empty | ask user for token or skip auto-post |
+| Token invalid (401/403) | tell user, post manually |
 
 ## Per-MR checklist
 
@@ -197,4 +222,5 @@ Show `reports/<iid>-<package>.md` to the user for manual posting on the MR.
 - [ ] Phase 8 language checked
 - [ ] Phase 9 VirusTotal (optional)
 - [ ] Phase 10 report generated + shown
-- [ ] Phase 11 cleanup confirmed
+- [ ] Phase 11 comment posted (if user confirmed)
+- [ ] Phase 12 cleanup confirmed
