@@ -69,7 +69,8 @@ def main() -> int:
     project_id = mr["project_id"]
     print(f"Posting comment on MR !{args.iid} (project {project_id}) ...")
     note = post_note(project_id, args.iid, body, token)
-    print(f"Comment posted: {note['web_url']}")
+    url = note.get("web_url") or f"{mr['web_url']}#note_{note.get('id')}"
+    print(f"Comment posted: {url}")
     return 0
 
 
