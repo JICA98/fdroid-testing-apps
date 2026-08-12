@@ -88,7 +88,7 @@ TEMPLATE = """## Tester review: {label} ({package})
 
 
 def checkbox(value):
-    return "- [x]" if value is True else "- [ ]"
+    return "[x]" if value is True else "[ ]"
 
 
 def render_report(meta: dict, results: dict, device: str, notes: list) -> str:
