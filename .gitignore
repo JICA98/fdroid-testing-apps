@@ -1,3 +1,5 @@
 work/
 reports/
 .tokens/
+__pycache__/
+*.pyc
