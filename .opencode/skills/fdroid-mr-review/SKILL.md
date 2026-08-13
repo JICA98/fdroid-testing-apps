@@ -6,7 +6,8 @@ Android device, following the official guide (F-Droid wiki, "Reviewing new
 apps", Tester Review section). The report is generated locally and the user
 posts it on the MR manually.
 
-Triggered by the user with an MR number, e.g. "review MR 45475".
+Triggered by the user with an MR number, e.g. "review MR 45475", or by a
+request to pick one, e.g. "pick an open MR ready for testing".
 
 ## Phase 0: Prerequisites
 
@@ -16,23 +17,49 @@ Check each; if items 1-3 fail, STOP and tell the user what to fix:
 2. `adb devices` — at least one device listed
 3. `aapt2` findable: `which aapt2` or `$ANDROID_HOME/build-tools/*/aapt2`
    (`fetch_mr.py` locates it automatically)
-4. Scripts present: `.opencode/skills/fdroid-mr-review/scripts/fetch_mr.py`
-   and `report.py` (run from repo root)
+4. Scripts present: `.opencode/skills/fdroid-mr-review/scripts/` —
+   `pick_mr.py`, `fetch_mr.py`, `report.py`, `post_comment.py` (run from
+   repo root)
 5. Optional — PCAPdroid installed: `adb shell pm list packages | grep
    com.emanuelef.remote_capture` (needed only if the app has INTERNET)
 6. Optional — VirusTotal key at `.tokens/virustotal.key`
-7. Optional — GitLab token at `.tokens/gitlab.token` (needed only for
-   auto-posting the report as an MR comment; without it the report is shown
-   for manual posting)
+7. GitLab token at `.tokens/gitlab.token` — required for MR picking (the
+   notes check that detects already-tested MRs needs auth) and for
+   auto-posting the report (Phase 12); without it the agent asks the user
+   for a token (save to `.tokens/gitlab.token`, gitignored) or falls back
+   to manual posting
 
-## Phase 1: Device selection
+## Phase 1: MR selection
+
+If the user named an MR number, skip this phase and go to Phase 3.
+
+Otherwise (e.g. "pick an open MR ready for testing which has not been
+tested yet"):
+
+1. Run from the repo root:
+
+       python3 .opencode/skills/fdroid-mr-review/scripts/pick_mr.py
+
+2. It queries open MRs labeled `review-requested` (oldest first), checks
+   each head pipeline, and reads MR notes to detect existing tester review
+   comments (`## Tester review:` marker). Output: one line per MR with
+   `pipeline` and `tested` status, then the candidate list of MRs that are
+   ready (pipeline success) and not yet tested.
+3. Pick the first candidate (`!<iid>` at the top of the candidate list —
+   the oldest untested ready MR) and show the user the summary: "Reviewing
+   !<iid> <title>". If the user prefers another, take their pick.
+4. `tested: unknown` (no token / notes auth failure) → warn the user that
+   previously-reviewed MRs cannot be detected; still proceed with the
+   oldest ready MR unless the user says otherwise.
+
+## Phase 2: Device selection
 
 - One device in `adb devices` → use it. Multiple → ask the user which serial.
 - Device API level: `adb -s <serial> shell getprop ro.build.version.sdk`
 - If `minSdk` (from `work/<iid>/metadata.json`) > device API level: STOP
   with that reason.
 
-## Phase 2: Fetch MR
+## Phase 3: Fetch MR
 
 From the repo root:
 
@@ -49,7 +76,7 @@ Show the user a summary card:
 Script error (no pipeline / failed pipeline / no build job / no APK) →
 report the error as the MR status and STOP; untestable MRs get no report.
 
-## Phase 3: Install
+## Phase 4: Install
 
     adb -s <serial> install -r work/<iid>/apk/*.apk
 
@@ -59,7 +86,7 @@ report the error as the MR status and STOP; untestable MRs get no report.
   reinstall.
 - Other failures → record FAIL, ask the user, skip app-dependent checks.
 
-## Phase 4: Launch & baseline
+## Phase 5: Launch & baseline
 
 1. `mkdir -p work/<iid>/screenshots`
 2. Launch: `adb -s <serial> shell monkey -p <package> -c
@@ -72,7 +99,7 @@ report the error as the MR status and STOP; untestable MRs get no report.
 5. Icon check: open Settings → Apps → <app> (or launcher grid), screenshot,
    compare against Android's default generic icon. Set `unique_icon`.
 
-## Phase 5: Feature testing
+## Phase 6: Feature testing
 
 - From the MR description, list the main functions to verify.
 - Walk each function using the android-emulator-skill scripts
@@ -86,7 +113,7 @@ report the error as the MR status and STOP; untestable MRs get no report.
 - Crash during testing → logcat dump, `functions_ok: false`, note it.
 - `functions_ok: true` only when all described main functions were usable.
 
-## Phase 6: Permissions analysis
+## Phase 7: Permissions analysis
 
 From `work/<iid>/metadata.json`:
 
@@ -96,9 +123,9 @@ From `work/<iid>/metadata.json`:
   the wiki guide.
 - `MANAGE_EXTERNAL_STORAGE` present → `no_manage_storage: false` + note
   "suggest SAF instead".
-- `has_internet` decides whether Phase 7 runs.
+- `has_internet` decides whether Phase 8 runs.
 
-## Phase 7: Network capture (only if has_internet)
+## Phase 8: Network capture (only if has_internet)
 
 1. PCAPdroid (preferred):
    - Start capture: try `adb shell monkey -p com.emanuelef.remote_capture 1`
@@ -116,13 +143,13 @@ Record: `conn_observed`, `conn_on_start`, `conn_update_check`,
 `conn_unnecessary`, `conn_tracking`, `conn_unclear`, `conn_webview`.
 Suspicious/unexplained destinations → note "check with author".
 
-## Phase 8: Language support
+## Phase 9: Language support
 
 English UI or description present → `english_ok: true`; otherwise
 `english_ok: false` + note "English not supported; must be declared in the
 description".
 
-## Phase 9: VirusTotal (optional)
+## Phase 10: VirusTotal (optional)
 
 - Key exists (`.tokens/virustotal.key`):
   `curl -s --header "x-apikey: $(cat .tokens/virustotal.key)"
@@ -132,7 +159,7 @@ description".
 - No key: ask the user to provide one (save to `.tokens/virustotal.key`,
   gitignored) or skip → leave `virustotal_ok` null.
 
-## Phase 10: Report
+## Phase 11: Report
 
 Write `work/<iid>/results.json` with the schema below and
 `work/<iid>/notes.txt` (one note per line), then:
@@ -142,7 +169,7 @@ Write `work/<iid>/results.json` with the schema below and
       --notes work/<iid>/notes.txt
 
 Show `reports/<iid>-<package>.md` to the user, then ask whether to post it
-as an MR comment (Phase 11) or let them post manually.
+as an MR comment (Phase 12) or let them post manually.
 
 ### results.json schema
 
@@ -170,9 +197,9 @@ as an MR comment (Phase 11) or let them post manually.
 
 `true` → `- [x]`, anything else → `- [ ]`.
 
-## Phase 11: Post comment (on user confirmation)
+## Phase 12: Post comment (on user confirmation)
 
-After showing the report in Phase 10, always ask the user first: "Post this
+After showing the report in Phase 11, always ask the user first: "Post this
 report as a comment on MR !<iid>?" — never post without confirmation.
 
 1. If `.tokens/gitlab.token` is missing or empty: ask the user for a GitLab
@@ -189,7 +216,7 @@ report as a comment on MR !<iid>?" — never post without confirmation.
    invalid or missing `api` scope — tell the user, keep the manual posting
    flow.
 
-## Phase 12: Cleanup
+## Phase 13: Cleanup
 
 - Ask the user whether to uninstall: `adb -s <serial> uninstall <package>`
 - Keep `work/<iid>/` and `reports/` (gitignored) for reference.
@@ -212,15 +239,16 @@ report as a comment on MR !<iid>?" — never post without confirmation.
 ## Per-MR checklist
 
 - [ ] Phase 0 prerequisites
-- [ ] Phase 1 device + minSdk
-- [ ] Phase 2 fetch + summary shown
-- [ ] Phase 3 installed
-- [ ] Phase 4 launch + baseline screenshots
-- [ ] Phase 5 features tested + screenshots
-- [ ] Phase 6 permissions analyzed
-- [ ] Phase 7 network captured (if INTERNET)
-- [ ] Phase 8 language checked
-- [ ] Phase 9 VirusTotal (optional)
-- [ ] Phase 10 report generated + shown
-- [ ] Phase 11 comment posted (if user confirmed)
-- [ ] Phase 12 cleanup confirmed
+- [ ] Phase 1 MR selected (or user provided iid)
+- [ ] Phase 2 device + minSdk
+- [ ] Phase 3 fetch + summary shown
+- [ ] Phase 4 installed
+- [ ] Phase 5 launch + baseline screenshots
+- [ ] Phase 6 features tested + screenshots
+- [ ] Phase 7 permissions analyzed
+- [ ] Phase 8 network captured (if INTERNET)
+- [ ] Phase 9 language checked
+- [ ] Phase 10 VirusTotal (optional)
+- [ ] Phase 11 report generated + shown
+- [ ] Phase 12 comment posted (if user confirmed)
+- [ ] Phase 13 cleanup confirmed
