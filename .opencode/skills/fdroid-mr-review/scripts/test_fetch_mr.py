@@ -11,7 +11,7 @@ from fetch_mr import (
 )
 
 BADGING = """package: name='com.kinetica.keyboard' versionCode='2' versionName='1.0.1' platformBuildVersionName='14' platformBuildVersionCode='34' compileSdkVersion='34' compileSdkVersionCodename='14'
-minSdkVersion:'26'
+sdkVersion:'26'
 targetSdkVersion:'34'
 application-label:'Kinetica'
 application-label-zh:'Kinetica'
@@ -65,6 +65,16 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(
             find_binary_apk_member(names),
             "tmp/binaries/com.kinetica.keyboard_2.binary.apk",
+        )
+
+    def test_find_binary_apk_member_signed_fallback(self):
+        names = [
+            "tmp/nl.hansdezwart.bgclock_2.apk",
+            "tmp/signed/nl.hansdezwart.bgclock_2.signed.apk",
+        ]
+        self.assertEqual(
+            find_binary_apk_member(names),
+            "tmp/signed/nl.hansdezwart.bgclock_2.signed.apk",
         )
 
 

@@ -43,6 +43,9 @@ def find_binary_apk_member(zip_names: list):
     for name in zip_names:
         if "/binaries/" in name and name.endswith(".binary.apk"):
             return name
+    for name in zip_names:
+        if name.startswith("tmp/signed/") and name.endswith(".signed.apk"):
+            return name
     return None
 
 
@@ -82,7 +85,7 @@ def parse_badging(output: str) -> dict:
     label = re.search(r"application-label:'([^']*)'", output)
     if label:
         info["label"] = label.group(1)
-    sdk = re.search(r"minSdkVersion:'(\d+)'", output)
+    sdk = re.search(r"(?:minSdkVersion|sdkVersion):'(\d+)'", output)
     if sdk:
         info["minSdk"] = int(sdk.group(1))
     target = re.search(r"targetSdkVersion:'(\d+)'", output)
